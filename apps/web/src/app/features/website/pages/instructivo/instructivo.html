@@ -1,0 +1,110 @@
+<div
+    class="venp-user-canvas flex min-h-full w-full min-w-0 flex-auto flex-col"
+>
+    <!-- Cabecera -->
+    <div
+        class="venp-gradient text-white"
+    >
+        <div class="mx-auto max-w-screen-xl px-6 py-14 text-center">
+            <div class="venp-icon-panel mx-auto h-14 w-14">
+                <mat-icon
+                    class="icon-size-8"
+                    [svgIcon]="'lucide:book-open'"
+                />
+            </div>
+            <p class="venp-section-kicker mt-5 text-white/70">
+                Orientación al elector
+            </p>
+            <h1 class="mt-2 text-4xl font-black tracking-tight sm:text-5xl">
+                Instructivo de votación
+            </h1>
+            <p class="mx-auto mt-2 max-w-2xl text-white/85">
+                Guía paso a paso para ejercer su voto en el sistema de Voto
+                Electrónico No Presencial (VENP).
+            </p>
+        </div>
+    </div>
+
+    <div class="mx-auto w-full max-w-5xl px-4 py-12 sm:px-6">
+        <div class="mb-6 flex justify-end print:hidden">
+            <button
+                type="button"
+                (click)="imprimir()"
+                [disabled]="descargando"
+                class="venp-choice-card inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60"
+            >
+                <mat-icon
+                    class="icon-size-5"
+                    [svgIcon]="'lucide:printer'"
+                />
+                {{ descargando ? 'Generando PDF…' : 'Descargar PDF' }}
+            </button>
+        </div>
+
+        <!-- Pasos -->
+        <ol class="relative grid grid-cols-1 gap-6 md:grid-cols-2">
+            @for (p of pasos; track $index) {
+                <li class="flex h-full gap-4">
+                    <div class="flex shrink-0 flex-col items-center">
+                        <div
+                            class="venp-bg-primary flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-black text-white shadow-lg"
+                        >
+                            {{ $index + 1 }}
+                        </div>
+                    </div>
+                    <div
+                        class="venp-premium-card mb-1 flex-auto p-5"
+                    >
+                        <div class="mb-1.5 flex items-center gap-3">
+                            <mat-icon
+                                class="venp-text-primary icon-size-6"
+                                [svgIcon]="p.icono"
+                            />
+                            <h3 class="text-lg font-bold">{{ p.titulo }}</h3>
+                        </div>
+                        <p class="text-secondary leading-relaxed">
+                            {{ p.detalle }}
+                        </p>
+                    </div>
+                </li>
+            }
+        </ol>
+
+        <!-- Recomendaciones -->
+        <div
+            class="venp-premium-card relative mt-10 overflow-hidden p-6 sm:p-8"
+        >
+            <span class="venp-brand-rule absolute inset-x-0 top-0"></span>
+            <div class="mb-4 flex items-center gap-2">
+                <mat-icon
+                    class="venp-text-primary icon-size-6"
+                    [svgIcon]="'lucide:lightbulb'"
+                />
+                <h2 class="venp-text-primary text-lg font-bold">
+                    Recomendaciones importantes
+                </h2>
+            </div>
+            <ul class="flex flex-col gap-2.5">
+                @for (t of tips; track $index) {
+                    <li class="flex items-start gap-2 text-sm">
+                        <mat-icon
+                            class="mt-0.5 shrink-0 text-green-600 icon-size-5"
+                            [svgIcon]="'lucide:check-circle'"
+                        />
+                        <span>{{ t }}</span>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <div class="mt-10 text-center print:hidden">
+            <a
+                [routerLink]="'/votar'"
+                class="venp-bg-primary inline-flex items-center gap-2 rounded-xl px-8 py-3.5 font-bold text-white transition hover:opacity-90 active:scale-[0.99]"
+            >
+                <mat-icon [svgIcon]="'lucide:fingerprint'" />
+                Ir a votar ahora
+            </a>
+        </div>
+    </div>
+</div>

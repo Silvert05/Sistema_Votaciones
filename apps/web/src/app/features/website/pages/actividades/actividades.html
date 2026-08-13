@@ -1,0 +1,160 @@
+<div
+    class="venp-user-canvas relative flex w-full min-w-0 flex-auto flex-col overflow-hidden"
+>
+    <div class="venp-gradient text-white">
+        <div class="mx-auto w-full max-w-screen-xl px-6 py-14 text-center">
+            <div class="venp-icon-panel mx-auto h-14 w-14">
+                <mat-icon
+                    class="icon-size-8"
+                    [svgIcon]="'lucide:calendar-days'"
+                />
+            </div>
+            <p class="venp-section-kicker mt-5 text-white/70">
+                Planificación electoral
+            </p>
+            <h1 class="mt-2 text-4xl font-black tracking-tight sm:text-5xl">
+                Cronograma de actividades
+            </h1>
+            @if (eleccion) {
+                <p class="mt-3 text-lg font-semibold text-white/90">
+                    {{ eleccion.nombre }}
+                </p>
+            }
+        </div>
+    </div>
+
+    <div
+        class="mx-auto flex w-full max-w-5xl flex-auto flex-col px-4 py-12 sm:px-6 lg:px-8"
+    >
+        <div
+            class="venp-premium-card relative mb-8 overflow-hidden px-6 py-5 text-center"
+        >
+            <span class="venp-brand-rule absolute inset-x-0 top-0"></span>
+            <p class="venp-section-kicker venp-text-secondary">
+                Información institucional
+            </p>
+            <p class="mt-2 text-base font-bold text-slate-800 dark:text-white">
+                Fechas oficiales del proceso electoral
+            @if (eleccion?.configuracion?.nombreInstitucion) {
+                <span class="block sm:inline">
+                    de {{ eleccion?.configuracion?.nombreInstitucion }}
+                </span>
+            }
+            </p>
+        </div>
+
+        @if (eleccion) {
+            <div class="mb-4 text-center">
+                <p class="text-secondary mt-1 text-sm">
+                    Fechas oficiales publicadas por el administrador electoral
+                </p>
+            </div>
+        }
+
+        @if (cargando) {
+            <div
+                class="text-secondary flex flex-auto items-center justify-center py-20"
+            >
+                <mat-icon
+                    class="mr-2 animate-spin"
+                    [svgIcon]="'lucide:refresh-cw'"
+                />
+                Cargando cronograma…
+            </div>
+        } @else if (!actividad.length) {
+            <div
+                class="venp-premium-card mx-auto my-12 w-full max-w-xl p-10 text-center"
+            >
+                <mat-icon
+                    class="text-secondary mx-auto icon-size-12"
+                    [svgIcon]="'lucide:calendar-days'"
+                />
+                <h2 class="mt-4 text-lg font-bold">
+                    Cronograma pendiente de publicación
+                </h2>
+                <p class="text-secondary mt-2">
+                    Aún no existen fechas configuradas para un proceso electoral
+                    público.
+                </p>
+            </div>
+        } @else {
+            <ol class="pt-4">
+                @for (item of actividad; track item.key; let last = $last) {
+                    <li class="relative flex py-2">
+                        @if (!last) {
+                            <div
+                                class="absolute left-5 top-7 -ml-px h-full w-0.5 bg-gray-300 dark:bg-gray-600"
+                            ></div>
+                        }
+                        <div class="relative flex min-w-0 flex-auto">
+                            <div
+                                class="venp-bg-primary mr-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-sm"
+                            >
+                                <mat-icon
+                                    class="text-white icon-size-5"
+                                    [svgIcon]="'lucide:square-pen_calendar'"
+                                />
+                            </div>
+                            <div
+                                class="flex min-w-0 flex-auto flex-col items-start"
+                            >
+                                <div
+                                class="venp-bg-primary rounded-xl px-6 py-2.5 text-sm font-black uppercase tracking-wide text-white shadow"
+                                >
+                                    {{ item.fecha }}
+                                </div>
+                                @for (
+                                    actividadItem of item.actividad;
+                                    track actividadItem.title
+                                ) {
+                                    <article
+                                        class="venp-premium-card venp-border-primary mt-4 w-full border-l-8 px-6 py-5"
+                                    >
+                                        <div
+                                            class="font-bold uppercase text-slate-900 dark:text-white"
+                                        >
+                                            {{ actividadItem.title }}
+                                        </div>
+                                        <div
+                                            class="text-secondary mt-2 flex flex-col gap-2 text-sm leading-5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4"
+                                        >
+                                            <div class="flex items-center">
+                                                <mat-icon
+                                                    class="text-hint icon-size-5"
+                                                    [svgIcon]="'lucide:user'"
+                                                />
+                                                <span class="ml-1.5">{{
+                                                    actividadItem.responsable
+                                                }}</span>
+                                            </div>
+                                            @if (actividadItem.lugar) {
+                                                <div class="flex items-center">
+                                                    <mat-icon
+                                                        class="text-hint icon-size-5"
+                                                        [svgIcon]="'lucide:map_home_work'"
+                                                    />
+                                                    <span class="ml-1.5">{{
+                                                        actividadItem.lugar
+                                                    }}</span>
+                                                </div>
+                                            }
+                                            <div class="flex items-center">
+                                                <mat-icon
+                                                    class="text-hint icon-size-5"
+                                                    [svgIcon]="'lucide:clock'"
+                                                />
+                                                <span class="ml-1.5">{{
+                                                    actividadItem.hora
+                                                }}</span>
+                                            </div>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    </li>
+                }
+            </ol>
+        }
+    </div>
+</div>

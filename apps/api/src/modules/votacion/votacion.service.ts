@@ -1,0 +1,1001 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { compare } from 'bcrypt';
+import { randomUUID } from 'node:crypto';
+import { Prisma } from 'prisma/generated/client';
+import {
+  EstadoCandidatura,
+  EstadoEleccion,
+  EstadoPadronElector,
+  TipoVoto,
+} from 'prisma/generated/enums';
+import { PrismaService } from 'src/prisma';
+import { AuditOperacion, AuditTabla } from '../auditoria/auditoria.constants';
+import { AuditoriaService } from '../auditoria/auditoria.service';
+import { AuthUser } from '../auth/entities/auth.entity';
+import {
+  EmitirVotanteDto,
+  EmitirVotoDto,
+  TarjetonQueryDto,
+  VotanteLoginDto,
+} from './dto/votacion.dto';
+
+interface Actor {
+  user: AuthUser;
+  ip?: string | null;
+}
+
+interface ParticipacionCarreraRow {
+  carreraId: string;
+  carrera: string;
+  habilitados: number;
+  votantes: number;
+}
+
+interface ConteoCarreraRow {
+  carreraId: string;
+  dignidadId: string;
+  candidaturaId: string | null;
+  tipo: TipoVoto;
+  opcionKey: string;
+  total: number;
+  identificacion: string | null;
+  nombres: string | null;
+  apellidos: string | null;
+  fotoUrl: string | null;
+  listaCodigo: string | null;
+  listaNombre: string | null;
+  listaColor: string | null;
+}
+
+const MINIMO_PRIVACIDAD_CARRERA = 5;
+
+const candidatoSelect = {
+  id: true,
+  eleccionId: true,
+  dignidadId: true,
+  electorId: true,
+  listaId: true,
+  orden: true,
+  estado: true,
+  elector: {
+    select: {
+      id: true,
+      identificacion: true,
+      nombres: true,
+      apellidos: true,
+      tipo: true,
+      fotoUrl: true,
+    },
+  },
+  lista: {
+    select: {
+      id: true,
+      codigo: true,
+      nombre: true,
+      color: true,
+    },
+  },
+} satisfies Prisma.CandidaturaSelect;
+
+@Injectable()
+export class VotacionService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditoria: AuditoriaService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  async abrirVotacion(eleccionId: string, actor: Actor) {
+    const eleccion = await this.getEleccion(eleccionId);
+    if (eleccion.estado === EstadoEleccion.VOTACION_ABIERTA) {
+      return eleccion;
+    }
+    if (
+      eleccion.estado !== EstadoEleccion.CAMPANIA &&
+      eleccion.estado !== EstadoEleccion.CANDIDATURAS_CALIFICADAS
+    ) {
+      throw new BadRequestException(
+        'La votacion solo puede abrirse luego de candidaturas calificadas o campania.',
+      );
+    }
+
+    await this.ensureCandidaturasCalificadas(eleccionId);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const next = await tx.eleccion.update({
+        where: { id: eleccionId },
+        data: { estado: EstadoEleccion.VOTACION_ABIERTA },
+      });
+      await tx.historialEstadoEleccion.create({
+        data: {
+          eleccionId,
+          estadoAnterior: eleccion.estado,
+          estadoNuevo: EstadoEleccion.VOTACION_ABIERTA,
+          comentario: 'Apertura de la jornada de votacion',
+          usuario: actor.user.usuario,
+        },
+      });
+      return next;
+    });
+
+    await this.audit(AuditTabla.ELECCIONES, AuditOperacion.ESTADO, eleccionId, {
+      datosAnteriores: { estado: eleccion.estado },
+      datosNuevos: { estado: updated.estado },
+      actor,
+    });
+
+    return updated;
+  }
+
+  async cerrarVotacion(eleccionId: string, actor: Actor) {
+    const eleccion = await this.getEleccion(eleccionId);
+    if (eleccion.estado !== EstadoEleccion.VOTACION_ABIERTA) {
+      throw new BadRequestException(
+        'Solo se puede cerrar una votacion abierta.',
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const next = await tx.eleccion.update({
+        where: { id: eleccionId },
+        data: { estado: EstadoEleccion.VOTACION_CERRADA },
+      });
+      await tx.historialEstadoEleccion.create({
+        data: {
+          eleccionId,
+          estadoAnterior: eleccion.estado,
+          estadoNuevo: EstadoEleccion.VOTACION_CERRADA,
+          comentario: 'Cierre de la jornada de votacion',
+          usuario: actor.user.usuario,
+        },
+      });
+      return next;
+    });
+
+    await this.audit(AuditTabla.ELECCIONES, AuditOperacion.ESTADO, eleccionId, {
+      datosAnteriores: { estado: eleccion.estado },
+      datosNuevos: { estado: updated.estado },
+      actor,
+    });
+
+    return updated;
+  }
+
+  async tarjeton(eleccionId: string, query: TarjetonQueryDto) {
+    const eleccion = await this.getEleccion(eleccionId);
+    const dignidades = await this.prisma.dignidad.findMany({
+      where: { eleccionId, activo: true },
+      orderBy: [{ orden: 'asc' }, { nombre: 'asc' }],
+      select: {
+        id: true,
+        nombre: true,
+        descripcion: true,
+        cantidadGanadores: true,
+        requiereLista: true,
+        tipoElectorPermitido: true,
+        candidaturas: {
+          where: {
+            estado: EstadoCandidatura.CALIFICADA,
+            excluidaSegundaVuelta: false,
+          },
+          select: candidatoSelect,
+          orderBy: [
+            { lista: { codigo: 'asc' } },
+            { orden: 'asc' },
+            { elector: { apellidos: 'asc' } },
+          ],
+        },
+      },
+    });
+
+    let elector: { id: string; identificacion: string } | null = null;
+    let votosEmitidos: string[] = [];
+    if (query.identificacion) {
+      elector = await this.findElectorHabilitado(
+        eleccionId,
+        query.identificacion,
+      );
+      votosEmitidos = (
+        await this.prisma.votoEmitido.findMany({
+          where: { eleccionId, electorId: elector.id },
+          select: { dignidadId: true },
+        })
+      ).map((item) => item.dignidadId);
+    }
+
+    return {
+      eleccion,
+      elector,
+      dignidades,
+      votosEmitidos,
+    };
+  }
+
+  async emitirVoto(eleccionId: string, dto: EmitirVotoDto, actor: Actor) {
+    const eleccion = await this.getEleccion(eleccionId);
+    if (eleccion.estado !== EstadoEleccion.VOTACION_ABIERTA) {
+      throw new BadRequestException('La votacion no esta abierta.');
+    }
+
+    const elector = await this.findElectorHabilitado(
+      eleccionId,
+      dto.identificacion,
+    );
+    const dignidades = await this.prisma.dignidad.findMany({
+      where: { eleccionId, activo: true },
+      select: { id: true, nombre: true },
+    });
+    if (!dignidades.length) {
+      throw new BadRequestException('La eleccion no tiene dignidades activas.');
+    }
+
+    const dignidadIds = new Set(dignidades.map((dignidad) => dignidad.id));
+    const votosPorDignidad = new Map(
+      dto.votos.map((voto) => [voto.dignidadId, voto]),
+    );
+    if (votosPorDignidad.size !== dto.votos.length) {
+      throw new BadRequestException('Hay dignidades duplicadas en el voto.');
+    }
+    if (votosPorDignidad.size !== dignidadIds.size) {
+      throw new BadRequestException(
+        'Debe registrar una seleccion por cada dignidad activa.',
+      );
+    }
+
+    for (const voto of dto.votos) {
+      if (!dignidadIds.has(voto.dignidadId)) {
+        throw new BadRequestException(
+          'Una dignidad no pertenece a la eleccion.',
+        );
+      }
+      await this.validateSeleccion(eleccionId, voto);
+    }
+
+    const yaVoto = await this.prisma.votoEmitido.findFirst({
+      where: { eleccionId, electorId: elector.id },
+      select: { id: true },
+    });
+    if (yaVoto) {
+      throw new BadRequestException(
+        'El elector ya registro su voto en esta eleccion.',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const voto of dto.votos) {
+        const opcionKey = this.opcionKey(voto.tipo, voto.candidaturaId);
+        await tx.votoEmitido.create({
+          data: {
+            eleccionId,
+            dignidadId: voto.dignidadId,
+            electorId: elector.id,
+          },
+        });
+        await tx.conteoVoto.upsert({
+          where: {
+            eleccionId_dignidadId_opcionKey: {
+              eleccionId,
+              dignidadId: voto.dignidadId,
+              opcionKey,
+            },
+          },
+          update: { total: { increment: 1 } },
+          create: {
+            eleccionId,
+            dignidadId: voto.dignidadId,
+            candidaturaId:
+              voto.tipo === TipoVoto.CANDIDATO ? voto.candidaturaId! : null,
+            tipo: voto.tipo,
+            opcionKey,
+            total: 1,
+          },
+        });
+        if (elector.carreraId) {
+          await this.incrementarConteoCarrera(tx, {
+            eleccionId,
+            dignidadId: voto.dignidadId,
+            carreraId: elector.carreraId,
+            candidaturaId:
+              voto.tipo === TipoVoto.CANDIDATO ? voto.candidaturaId! : null,
+            tipo: voto.tipo,
+            opcionKey,
+          });
+        }
+      }
+      await tx.padronElectoral.updateMany({
+        where: { eleccionId, electorId: elector.id },
+        data: {
+          credencialHash: null,
+          credencialRevocadaAt: new Date(),
+          credencialEnvioError: null,
+        },
+      });
+    });
+
+    await this.audit(
+      AuditTabla.VOTOS_EMITIDOS,
+      AuditOperacion.CREATE,
+      elector.id,
+      {
+        datosNuevos: {
+          eleccionId,
+          electorId: elector.id,
+          dignidades: dto.votos.map((voto) => voto.dignidadId),
+        },
+        actor,
+      },
+    );
+
+    return { registrado: true, dignidades: dto.votos.length };
+  }
+
+  async resultados(eleccionId: string) {
+    const eleccion = await this.getEleccion(eleccionId);
+    const padronHabilitado = await this.prisma.padronElectoral.count({
+      where: {
+        eleccionId,
+        publicado: true,
+        estado: EstadoPadronElector.HABILITADO,
+      },
+    });
+    const dignidades = await this.prisma.dignidad.findMany({
+      where: { eleccionId, activo: true },
+      orderBy: [{ orden: 'asc' }, { nombre: 'asc' }],
+      select: { id: true, nombre: true, cantidadGanadores: true },
+    });
+    const conteos = await this.prisma.conteoVoto.findMany({
+      where: { eleccionId },
+      orderBy: [{ dignidad: { orden: 'asc' } }, { total: 'desc' }],
+      select: {
+        id: true,
+        eleccionId: true,
+        dignidadId: true,
+        candidaturaId: true,
+        tipo: true,
+        opcionKey: true,
+        total: true,
+        candidatura: {
+          select: {
+            id: true,
+            elector: {
+              select: {
+                identificacion: true,
+                nombres: true,
+                apellidos: true,
+                fotoUrl: true,
+              },
+            },
+            lista: {
+              select: { codigo: true, nombre: true, color: true },
+            },
+          },
+        },
+      },
+    });
+
+    const emitidos = await Promise.all(
+      dignidades.map(async (dignidad) => ({
+        dignidadId: dignidad.id,
+        total: await this.prisma.votoEmitido.count({
+          where: { eleccionId, dignidadId: dignidad.id },
+        }),
+      })),
+    );
+
+    const estadisticasCarrera =
+      await this.estadisticasPorCarrera(eleccionId);
+
+    return {
+      eleccion,
+      padronHabilitado,
+      dignidades,
+      emitidos,
+      conteos,
+      estadisticasCarrera,
+      minimoPrivacidadCarrera: MINIMO_PRIVACIDAD_CARRERA,
+    };
+  }
+
+  // ---- Flujo del votante (Voto Electronico No Presencial) ----
+
+  async loginVotante(eleccionId: string, dto: VotanteLoginDto) {
+    const eleccion = await this.getEleccionVotante(eleccionId);
+    this.ensureVotacionDisponible(eleccion);
+
+    const padron = await this.prisma.padronElectoral.findFirst({
+      where: {
+        eleccionId,
+        publicado: true,
+        estado: EstadoPadronElector.HABILITADO,
+        credencialRevocadaAt: null,
+        elector: { identificacion: dto.identificacion.trim(), activo: true },
+      },
+      select: {
+        credencialHash: true,
+        credencialVersion: true,
+        elector: {
+          select: {
+            id: true,
+            identificacion: true,
+            nombres: true,
+            apellidos: true,
+            tipo: true,
+          },
+        },
+      },
+    });
+
+    if (!padron || !padron.credencialHash) {
+      throw new UnauthorizedException('Credenciales invalidas.');
+    }
+    const ok = await compare(dto.password, padron.credencialHash);
+    if (!ok) {
+      throw new UnauthorizedException('Credenciales invalidas.');
+    }
+
+    const yaVoto = await this.prisma.votoEmitido.findFirst({
+      where: { eleccionId, electorId: padron.elector.id },
+      select: { id: true },
+    });
+    if (yaVoto) {
+      throw new BadRequestException('Este elector ya emitio su voto.');
+    }
+
+    const token = this.jwtService.sign(
+      {
+        sub: padron.elector.id,
+        eleccionId,
+        identificacion: padron.elector.identificacion,
+        credencialVersion: padron.credencialVersion,
+        type: 'voto',
+      },
+      { expiresIn: '30m' },
+    );
+
+    return {
+      token,
+      elector: {
+        id: padron.elector.id,
+        identificacion: padron.elector.identificacion,
+        nombres: padron.elector.nombres,
+        apellidos: padron.elector.apellidos,
+      },
+      eleccion: {
+        id: eleccion.id,
+        nombre: eleccion.nombre,
+        institucion: eleccion.configuracion?.nombreInstitucion ?? null,
+      },
+    };
+  }
+
+  async tarjetonVotante(eleccionId: string, electorId: string) {
+    const eleccion = await this.getEleccionVotante(eleccionId);
+    const elector = await this.prisma.elector.findUnique({
+      where: { id: electorId },
+      select: { id: true, tipo: true },
+    });
+    if (!elector) throw new NotFoundException('Elector no encontrado.');
+
+    const dignidades = await this.prisma.dignidad.findMany({
+      where: {
+        eleccionId,
+        activo: true,
+        OR: this.dignidadesElegiblesWhere(elector.tipo),
+      },
+      orderBy: [{ orden: 'asc' }, { nombre: 'asc' }],
+      select: {
+        id: true,
+        nombre: true,
+        descripcion: true,
+        cantidadGanadores: true,
+        requiereLista: true,
+        tipoElectorPermitido: true,
+        candidaturas: {
+          where: {
+            estado: EstadoCandidatura.CALIFICADA,
+            excluidaSegundaVuelta: false,
+          },
+          select: candidatoSelect,
+          orderBy: [
+            { lista: { codigo: 'asc' } },
+            { orden: 'asc' },
+            { elector: { apellidos: 'asc' } },
+          ],
+        },
+      },
+    });
+
+    const votosEmitidos = (
+      await this.prisma.votoEmitido.findMany({
+        where: { eleccionId, electorId },
+        select: { dignidadId: true },
+      })
+    ).map((item) => item.dignidadId);
+
+    return {
+      eleccion: {
+        id: eleccion.id,
+        nombre: eleccion.nombre,
+        institucion: eleccion.configuracion?.nombreInstitucion ?? null,
+      },
+      dignidades,
+      votosEmitidos,
+    };
+  }
+
+  async emitirVotante(
+    eleccionId: string,
+    electorId: string,
+    dto: EmitirVotanteDto,
+    ip?: string | null,
+  ) {
+    const eleccion = await this.getEleccionVotante(eleccionId);
+    this.ensureVotacionDisponible(eleccion);
+
+    const elector = await this.prisma.padronElectoral.findFirst({
+      where: {
+        eleccionId,
+        publicado: true,
+        estado: EstadoPadronElector.HABILITADO,
+        electorId,
+        credencialHash: { not: null },
+        credencialRevocadaAt: null,
+      },
+      select: {
+        elector: {
+          select: {
+            id: true,
+            tipo: true,
+            carreraId: true,
+            identificacion: true,
+            nombres: true,
+            apellidos: true,
+          },
+        },
+      },
+    });
+    if (!elector) {
+      throw new BadRequestException(
+        'El elector no esta habilitado en el padron.',
+      );
+    }
+
+    const dignidades = await this.prisma.dignidad.findMany({
+      where: {
+        eleccionId,
+        activo: true,
+        OR: this.dignidadesElegiblesWhere(elector.elector.tipo),
+      },
+      select: { id: true },
+    });
+    if (!dignidades.length) {
+      throw new BadRequestException(
+        'No hay dignidades disponibles para este elector.',
+      );
+    }
+
+    const dignidadIds = new Set(dignidades.map((d) => d.id));
+    const votosPorDignidad = new Map(dto.votos.map((v) => [v.dignidadId, v]));
+    if (votosPorDignidad.size !== dto.votos.length) {
+      throw new BadRequestException('Hay dignidades duplicadas en el voto.');
+    }
+    if (votosPorDignidad.size !== dignidadIds.size) {
+      throw new BadRequestException(
+        'Debe registrar una seleccion por cada cedula.',
+      );
+    }
+    for (const voto of dto.votos) {
+      if (!dignidadIds.has(voto.dignidadId)) {
+        throw new BadRequestException(
+          'Una cedula no corresponde a este elector.',
+        );
+      }
+      await this.validateSeleccion(eleccionId, voto);
+    }
+
+    const yaVoto = await this.prisma.votoEmitido.findFirst({
+      where: { eleccionId, electorId },
+      select: { id: true },
+    });
+    if (yaVoto) {
+      throw new BadRequestException(
+        'El elector ya registro su voto en esta eleccion.',
+      );
+    }
+
+    const comprobante = await this.prisma.$transaction(async (tx) => {
+      let registro: { id: string; createdAt: Date } | null = null;
+      for (const voto of dto.votos) {
+        const opcionKey = this.opcionKey(voto.tipo, voto.candidaturaId);
+        const emitido = await tx.votoEmitido.create({
+          data: { eleccionId, dignidadId: voto.dignidadId, electorId },
+          select: { id: true, createdAt: true },
+        });
+        registro ??= emitido;
+        await tx.conteoVoto.upsert({
+          where: {
+            eleccionId_dignidadId_opcionKey: {
+              eleccionId,
+              dignidadId: voto.dignidadId,
+              opcionKey,
+            },
+          },
+          update: { total: { increment: 1 } },
+          create: {
+            eleccionId,
+            dignidadId: voto.dignidadId,
+            candidaturaId:
+              voto.tipo === TipoVoto.CANDIDATO ? voto.candidaturaId! : null,
+            tipo: voto.tipo,
+            opcionKey,
+            total: 1,
+          },
+        });
+        if (elector.elector.carreraId) {
+          await this.incrementarConteoCarrera(tx, {
+            eleccionId,
+            dignidadId: voto.dignidadId,
+            carreraId: elector.elector.carreraId,
+            candidaturaId:
+              voto.tipo === TipoVoto.CANDIDATO ? voto.candidaturaId! : null,
+            tipo: voto.tipo,
+            opcionKey,
+          });
+        }
+      }
+      await tx.padronElectoral.update({
+        where: {
+          eleccionId_electorId: { eleccionId, electorId },
+        },
+        data: {
+          credencialHash: null,
+          credencialRevocadaAt: new Date(),
+          credencialEnvioError: null,
+        },
+      });
+      return registro;
+    });
+
+    await this.auditoria.registrar({
+      tabla: AuditTabla.VOTOS_EMITIDOS,
+      operacion: AuditOperacion.CREATE,
+      registroId: electorId,
+      datosNuevos: {
+        eleccionId,
+        canal: 'VENP',
+        dignidades: dto.votos.map((v) => v.dignidadId),
+      },
+      usuario: elector.elector.identificacion,
+      ip,
+    });
+
+    if (!comprobante) {
+      throw new BadRequestException('No se pudo generar el comprobante.');
+    }
+
+    return {
+      registrado: true,
+      dignidades: dto.votos.length,
+      comprobante: {
+        codigo: comprobante.id,
+        emitidoAt: comprobante.createdAt,
+        elector: {
+          identificacion: elector.elector.identificacion,
+          nombres: elector.elector.nombres,
+          apellidos: elector.elector.apellidos,
+        },
+        eleccion: {
+          nombre: eleccion.nombre,
+          institucion: eleccion.configuracion?.nombreInstitucion ?? null,
+        },
+      },
+    };
+  }
+
+  private dignidadesElegiblesWhere(
+    tipo: 'DOCENTE' | 'ESTUDIANTE' | 'AMBOS',
+  ): Prisma.DignidadWhereInput[] {
+    const permitidos = new Set(['AMBOS', tipo]);
+    return [...permitidos].map((t) => ({
+      tipoElectorPermitido: t as any,
+    }));
+  }
+
+  private async incrementarConteoCarrera(
+    tx: Prisma.TransactionClient,
+    data: {
+      eleccionId: string;
+      dignidadId: string;
+      carreraId: string;
+      candidaturaId: string | null;
+      tipo: TipoVoto;
+      opcionKey: string;
+    },
+  ): Promise<void> {
+    const candidatura = data.candidaturaId
+      ? Prisma.sql`${data.candidaturaId}::uuid`
+      : Prisma.sql`NULL`;
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "conteos_votos_carrera" (
+        "id", "eleccion_id", "dignidad_id", "carrera_id",
+        "candidatura_id", "tipo", "opcion_key", "total",
+        "created_at", "updated_at"
+      )
+      VALUES (
+        ${randomUUID()}::uuid, ${data.eleccionId}::uuid,
+        ${data.dignidadId}::uuid, ${data.carreraId}::uuid,
+        ${candidatura}, ${data.tipo}::"TipoVoto", ${data.opcionKey},
+        1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (
+        "eleccion_id", "dignidad_id", "carrera_id", "opcion_key"
+      )
+      DO UPDATE SET
+        "total" = "conteos_votos_carrera"."total" + 1,
+        "updated_at" = CURRENT_TIMESTAMP
+    `);
+  }
+
+  private async estadisticasPorCarrera(eleccionId: string) {
+    const [participacion, conteos] = await Promise.all([
+      this.prisma.$queryRaw<ParticipacionCarreraRow[]>(Prisma.sql`
+        SELECT
+          c."id" AS "carreraId",
+          c."nombre" AS "carrera",
+          COUNT(DISTINCT pe."elector_id")::int AS "habilitados",
+          COUNT(DISTINCT ve."elector_id")::int AS "votantes"
+        FROM "padrones_electorales" pe
+        INNER JOIN "electores" e ON e."id" = pe."elector_id"
+        INNER JOIN "carreras" c ON c."id" = e."carrera_id"
+        LEFT JOIN "votos_emitidos" ve
+          ON ve."eleccion_id" = pe."eleccion_id"
+          AND ve."elector_id" = pe."elector_id"
+        WHERE pe."eleccion_id" = ${eleccionId}::uuid
+          AND pe."publicado" = true
+          AND pe."estado" = ${EstadoPadronElector.HABILITADO}::"EstadoPadronElector"
+        GROUP BY c."id", c."nombre", c."orden"
+        ORDER BY c."orden" ASC, c."nombre" ASC
+      `),
+      this.prisma.$queryRaw<ConteoCarreraRow[]>(Prisma.sql`
+        SELECT
+          cvc."carrera_id" AS "carreraId",
+          cvc."dignidad_id" AS "dignidadId",
+          cvc."candidatura_id" AS "candidaturaId",
+          cvc."tipo" AS "tipo",
+          cvc."opcion_key" AS "opcionKey",
+          cvc."total" AS "total",
+          e."identificacion" AS "identificacion",
+          e."nombres" AS "nombres",
+          e."apellidos" AS "apellidos",
+          e."foto_url" AS "fotoUrl",
+          l."codigo" AS "listaCodigo",
+          l."nombre" AS "listaNombre",
+          l."color" AS "listaColor"
+        FROM "conteos_votos_carrera" cvc
+        LEFT JOIN "candidaturas" ca ON ca."id" = cvc."candidatura_id"
+        LEFT JOIN "electores" e ON e."id" = ca."elector_id"
+        LEFT JOIN "listas_electorales" l ON l."id" = ca."lista_id"
+        WHERE cvc."eleccion_id" = ${eleccionId}::uuid
+        ORDER BY cvc."carrera_id", cvc."dignidad_id", cvc."total" DESC
+      `),
+    ]);
+
+    return participacion.map((item) => {
+      const votantes = Number(item.votantes);
+      const habilitados = Number(item.habilitados);
+      const publicable = votantes >= MINIMO_PRIVACIDAD_CARRERA;
+      return {
+        carreraId: item.carreraId,
+        carrera: item.carrera,
+        habilitados,
+        votantes,
+        porcentaje: habilitados
+          ? Math.round((votantes / habilitados) * 10000) / 100
+          : 0,
+        publicable,
+        opciones: publicable
+          ? conteos
+              .filter((conteo) => conteo.carreraId === item.carreraId)
+              .map((conteo) => ({
+                dignidadId: conteo.dignidadId,
+                candidaturaId: conteo.candidaturaId,
+                tipo: conteo.tipo,
+                opcionKey: conteo.opcionKey,
+                total: Number(conteo.total),
+                candidatura: conteo.candidaturaId
+                  ? {
+                      id: conteo.candidaturaId,
+                      elector: {
+                        identificacion: conteo.identificacion ?? '',
+                        nombres: conteo.nombres ?? '',
+                        apellidos: conteo.apellidos ?? '',
+                        fotoUrl: conteo.fotoUrl,
+                      },
+                      lista: conteo.listaCodigo
+                        ? {
+                            codigo: conteo.listaCodigo,
+                            nombre: conteo.listaNombre ?? '',
+                            color: conteo.listaColor,
+                          }
+                        : null,
+                    }
+                  : null,
+              }))
+          : [],
+      };
+    });
+  }
+
+  private ensureVotacionDisponible(eleccion: {
+    estado: EstadoEleccion;
+    jornada: {
+      linkVotacionActivo: boolean;
+      fechaFinVotacion: Date | null;
+    } | null;
+  }) {
+    if (
+      eleccion.estado !== EstadoEleccion.VOTACION_ABIERTA ||
+      !eleccion.jornada?.linkVotacionActivo
+    ) {
+      throw new BadRequestException(
+        'La votacion no esta disponible en este momento.',
+      );
+    }
+    if (
+      eleccion.jornada.fechaFinVotacion &&
+      new Date() >= eleccion.jornada.fechaFinVotacion
+    ) {
+      throw new BadRequestException(
+        'La jornada de votacion finalizo segun el cronograma.',
+      );
+    }
+  }
+
+  private async getEleccionVotante(eleccionId: string) {
+    const eleccion = await this.prisma.eleccion.findUnique({
+      where: { id: eleccionId },
+      select: {
+        id: true,
+        nombre: true,
+        estado: true,
+        configuracion: { select: { nombreInstitucion: true } },
+        jornada: {
+          select: { linkVotacionActivo: true, fechaFinVotacion: true },
+        },
+      },
+    });
+    if (!eleccion) throw new NotFoundException('Eleccion no encontrada.');
+    return eleccion;
+  }
+
+  private async getEleccion(eleccionId: string) {
+    const eleccion = await this.prisma.eleccion.findUnique({
+      where: { id: eleccionId },
+      select: { id: true, nombre: true, estado: true },
+    });
+    if (!eleccion) throw new NotFoundException('Eleccion no encontrada.');
+    return eleccion;
+  }
+
+  private async ensureCandidaturasCalificadas(eleccionId: string) {
+    const dignidades = await this.prisma.dignidad.findMany({
+      where: { eleccionId, activo: true },
+      select: { id: true, nombre: true },
+    });
+    if (!dignidades.length) {
+      throw new BadRequestException('La eleccion no tiene dignidades activas.');
+    }
+
+    const faltantes: string[] = [];
+    for (const dignidad of dignidades) {
+      const total = await this.prisma.candidatura.count({
+        where: {
+          eleccionId,
+          dignidadId: dignidad.id,
+          estado: EstadoCandidatura.CALIFICADA,
+        },
+      });
+      if (!total) faltantes.push(dignidad.nombre);
+    }
+    if (faltantes.length) {
+      throw new BadRequestException(
+        `No hay candidaturas calificadas para: ${faltantes.join(', ')}.`,
+      );
+    }
+  }
+
+  private async findElectorHabilitado(
+    eleccionId: string,
+    identificacion: string,
+  ) {
+    const padron = await this.prisma.padronElectoral.findFirst({
+      where: {
+        eleccionId,
+        publicado: true,
+        estado: EstadoPadronElector.HABILITADO,
+        elector: {
+          identificacion: identificacion.trim(),
+          activo: true,
+        },
+      },
+      select: {
+        elector: {
+          select: {
+            id: true,
+            identificacion: true,
+            carreraId: true,
+          },
+        },
+      },
+    });
+    if (!padron) {
+      throw new BadRequestException(
+        'El elector no esta habilitado en el padron publicado.',
+      );
+    }
+    return padron.elector;
+  }
+
+  private async validateSeleccion(
+    eleccionId: string,
+    voto: { dignidadId: string; tipo: TipoVoto; candidaturaId?: string | null },
+  ) {
+    if (voto.tipo === TipoVoto.CANDIDATO) {
+      if (!voto.candidaturaId) {
+        throw new BadRequestException(
+          'El voto por candidato requiere candidatura.',
+        );
+      }
+      const candidatura = await this.prisma.candidatura.findFirst({
+        where: {
+          id: voto.candidaturaId,
+          eleccionId,
+          dignidadId: voto.dignidadId,
+          estado: EstadoCandidatura.CALIFICADA,
+          excluidaSegundaVuelta: false,
+        },
+        select: { id: true },
+      });
+      if (!candidatura) {
+        throw new BadRequestException(
+          'La candidatura seleccionada no esta calificada.',
+        );
+      }
+      return;
+    }
+
+    if (voto.candidaturaId) {
+      throw new BadRequestException(
+        'El voto blanco o nulo no debe tener candidatura.',
+      );
+    }
+  }
+
+  private opcionKey(tipo: TipoVoto, candidaturaId?: string | null): string {
+    if (tipo === TipoVoto.CANDIDATO) return candidaturaId!;
+    return tipo;
+  }
+
+  private audit(
+    tabla: string,
+    operacion: string,
+    registroId: string,
+    params: { datosAnteriores?: unknown; datosNuevos?: unknown; actor: Actor },
+  ) {
+    return this.auditoria.registrar({
+      tabla,
+      operacion,
+      registroId,
+      datosAnteriores: params.datosAnteriores,
+      datosNuevos: params.datosNuevos,
+      usuario: params.actor.user.usuario,
+      ip: params.actor.ip,
+    });
+  }
+}

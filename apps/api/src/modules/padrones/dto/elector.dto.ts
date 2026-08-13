@@ -1,0 +1,193 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Matches,
+  Min,
+} from 'class-validator';
+import { Genero, TipoElector } from 'prisma/generated/enums';
+
+export class QueryElectoresDto {
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page: number = 1;
+
+  @ApiPropertyOptional({ default: 10, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit: number = 10;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ enum: TipoElector })
+  @IsOptional()
+  @IsEnum(TipoElector)
+  tipo?: TipoElector;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  activo?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Excluye electores que ya estan en el padron de esta eleccion',
+  })
+  @IsOptional()
+  @IsUUID()
+  excluirEleccionId?: string;
+}
+
+export class CreateElectorDto {
+  @ApiProperty({ example: '0102030405' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  identificacion: string;
+
+  @ApiProperty({ example: 'Maria Fernanda' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  nombres: string;
+
+  @ApiProperty({ example: 'Perez Lopez' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  apellidos: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  @Matches(/^[^@\s]+@(?:[a-z0-9-]+\.)*yavirac\.edu\.ec$/i, {
+    message:
+      'El correo debe pertenecer al dominio institucional yavirac.edu.ec.',
+  })
+  @MaxLength(180)
+  email?: string | null;
+
+  @ApiProperty({ enum: TipoElector })
+  @IsEnum(TipoElector)
+  tipo: TipoElector;
+
+  @ApiPropertyOptional({
+    enum: Genero,
+    description: 'Requerido para postular en una lista (Art. 12, equidad de genero).',
+  })
+  @IsOptional()
+  @IsEnum(Genero)
+  genero?: Genero | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  carreraId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  nivelId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  paraleloId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  jornadaId?: string | null;
+}
+
+export class UpdateElectorDto {
+  @ApiPropertyOptional({ example: '0102030405' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  identificacion?: string;
+
+  @ApiPropertyOptional({ example: 'Maria Fernanda' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  nombres?: string;
+
+  @ApiPropertyOptional({ example: 'Perez Lopez' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  apellidos?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  @Matches(/^[^@\s]+@(?:[a-z0-9-]+\.)*yavirac\.edu\.ec$/i, {
+    message:
+      'El correo debe pertenecer al dominio institucional yavirac.edu.ec.',
+  })
+  @MaxLength(180)
+  email?: string | null;
+
+  @ApiPropertyOptional({ enum: TipoElector })
+  @IsOptional()
+  @IsEnum(TipoElector)
+  tipo?: TipoElector;
+
+  @ApiPropertyOptional({ enum: Genero })
+  @IsOptional()
+  @IsEnum(Genero)
+  genero?: Genero | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  carreraId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  nivelId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  paraleloId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  jornadaId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}
+
+export class SetElectorActivoDto {
+  @ApiProperty()
+  @IsBoolean()
+  activo: boolean;
+}
