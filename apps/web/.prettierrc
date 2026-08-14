@@ -1,0 +1,18 @@
+{
+  "printWidth": 80,
+    "singleQuote": true,
+   "bracketSameLine": false,
+    "trailingComma": "es5",
+    "tabWidth": 4,
+    "bracketSpacing": true,
+    "arrowParens": "always",
+    "plugins": ["prettier-plugin-organize-imports", "prettier-plugin-tailwindcss"],
+  "overrides": [
+    {
+      "files": "*.html",
+      "options": {
+        "parser": "angular"
+      }
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+@if (!dismissible || (dismissible && !dismissed)) {
+    <div
+        class="fuse-alert-container"
+        [@fadeIn]="!dismissed"
+        [@fadeOut]="!dismissed"
+    >
+        <!-- Border -->
+        @if (appearance === 'border') {
+            <div class="fuse-alert-border"></div>
+        }
+
+        <!-- Icon -->
+        @if (showIcon) {
+            <div class="fuse-alert-icon">
+                <!-- Custom icon -->
+                <div class="fuse-alert-custom-icon">
+                    <ng-content select="[fuseAlertIcon]"></ng-content>
+                </div>
+
+                <!-- Default icons -->
+                <div class="fuse-alert-default-icon">
+                    @if (type === 'primary') {
+                        <mat-icon
+                            [svgIcon]="'lucide:check-circle'"
+                        ></mat-icon>
+                    }
+
+                    @if (type === 'accent') {
+                        <mat-icon
+                            [svgIcon]="'lucide:check-circle'"
+                        ></mat-icon>
+                    }
+
+                    @if (type === 'warn') {
+                        <mat-icon
+                            [svgIcon]="'lucide:x-circle'"
+                        ></mat-icon>
+                    }
+
+                    @if (type === 'basic') {
+                        <mat-icon
+                            [svgIcon]="'lucide:check-circle'"
+                        ></mat-icon>
+                    }
+
+                    @if (type === 'info') {
+                        <mat-icon
+                            [svgIcon]="'lucide:info'"
+                        ></mat-icon>
+                    }
+
+                    @if (type === 'success') {
+                        <mat-icon
+                            [svgIcon]="'lucide:check-circle'"
+                        ></mat-icon>
+                    }
+
+                    @if (type === 'warning') {
+                        <mat-icon
+                            [svgIcon]="'lucide:triangle-alert'"
+                        ></mat-icon>
+                    }
+
+                    @if (type === 'error') {
+                        <mat-icon
+                            [svgIcon]="'lucide:x-circle'"
+                        ></mat-icon>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Content -->
+        <div class="fuse-alert-content">
+            <div class="fuse-alert-title">
+                <ng-content select="[fuseAlertTitle]"></ng-content>
+            </div>
+
+            <div class="fuse-alert-message">
+                <ng-content></ng-content>
+            </div>
+        </div>
+
+        <!-- Dismiss button -->
+        <button
+            class="fuse-alert-dismiss-button"
+            mat-icon-button
+            (click)="dismiss()"
+        >
+            <mat-icon [svgIcon]="'lucide:x'"></mat-icon>
+        </button>
+    </div>
+}

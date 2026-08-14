@@ -1,0 +1,119 @@
+<style>
+  .venp-gradient {
+    animation: venp-friendly-colors 6s ease-in-out infinite !important;
+  }
+  .venp-gradient::before {
+    opacity: .42 !important;
+    background-image:
+      linear-gradient(90deg, rgba(2, 6, 23, .36), rgba(2, 6, 23, .18)),
+      url('/img/hero.jpg') !important;
+  }
+  @keyframes venp-friendly-colors {
+    0%, 40%, 100% { background-color: var(--venp-primary, #183f84); }
+    48%, 96% { background-color: #334155; }
+    56%, 88% { background-color: var(--venp-secondary, #f05a16); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .venp-gradient { animation: none !important; }
+  }
+</style>
+
+<fuse-loading-bar />
+
+@if (isScreenSmall) {
+<fuse-vertical-navigation class="dark bg-gray-900 print:hidden" [mode]="'over'" [name]="'mainNavigation'"
+  [navigation]="navigation.default" [opened]="false">
+  <ng-container fuseVerticalNavigationContentHeader>
+    <div class="flex h-14 items-center px-6 pt-4">
+      <img class="h-7" [src]="theme().logoUrl" (error)="onImageError($event)" alt="Logo del Instituto Yavirac">
+    </div>
+  </ng-container>
+</fuse-vertical-navigation>
+}
+
+<div class="flex w-full min-w-0 flex-auto flex-col bg-default"
+  [style.--venp-primary]="theme().colorPrimario"
+  [style.--venp-secondary]="theme().colorSecundario"
+  [style.--venp-accent]="theme().colorAcento">
+  <header
+    class="sticky top-0 z-49 flex h-14 w-full flex-0 items-center justify-between bg-card backdrop-blur-md px-4 md:px-6 lg:px-12 border-b border-transparent shadow-sm transition-all duration-300 dark:border-b dark:bg-gray-900/90 dark:shadow-none print:hidden">
+
+    @if (!isScreenSmall) {
+    <a [routerLink]="'/inicio'" class="flex items-center shrink-0 mr-6">
+      <img class="h-9 object-contain" [src]="theme().logoUrl" (error)="onImageError($event)" alt="Logo del Instituto Yavirac">
+    </a>
+    <div class="flex items-center gap-3 ml-4">
+      <fuse-horizontal-navigation [name]="'mainNavigation'" [navigation]="navigation.horizontal">
+      </fuse-horizontal-navigation>
+      <a [routerLink]="'admin/auth/login'" target="_blank"
+        class="inline-flex items-center gap-1.5 px-4 h-8 rounded-md bg-primary text-on-primary text-sm font-semibold hover:opacity-90 active:scale-95 transition-all duration-150">
+        <mat-icon class="icon-size-4" [svgIcon]="'lucide:log-in'"></mat-icon>
+        Iniciar Sesión
+      </a>
+    </div>
+
+    } @else {
+    <button mat-icon-button (click)="toggleNavigation('mainNavigation')">
+      <mat-icon [svgIcon]="'lucide:menu'"></mat-icon>
+    </button>
+    <a [routerLink]="'/inicio'" class="absolute left-1/2 -translate-x-1/2">
+      <img class="h-8" [src]="theme().logoUrl" (error)="onImageError($event)" alt="Logo del Instituto Yavirac">
+    </a>
+    <a [routerLink]="'admin/auth/login'" target="_blank"
+      class="inline-flex items-center gap-1 px-3 h-8 rounded-md bg-primary text-on-primary text-xs font-semibold hover:opacity-90 transition-opacity duration-150">
+      <mat-icon class="icon-size-4" [svgIcon]="'lucide:log-in'"></mat-icon>
+      <span class="hidden xs:inline">Ingresar</span>
+    </a>
+    }
+  </header>
+
+  <main class="flex w-full min-w-0 flex-auto flex-col">
+    @if (true) {
+    <router-outlet></router-outlet>
+    }
+  </main>
+
+
+  <footer class="relative w-full flex-0 overflow-hidden bg-slate-950 px-6 py-10 text-white print:hidden">
+    <span class="venp-bg-secondary absolute left-0 top-0 h-1.5 w-36 rounded-br-full"></span>
+    <div class="mx-auto grid w-full max-w-screen-xl gap-8 md:grid-cols-[1.3fr_.8fr_.9fr]">
+      <div>
+        <a [routerLink]="'/inicio'" class="inline-flex items-center gap-4">
+          <span class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-2 shadow-xl">
+            <img class="max-h-full object-contain" [src]="theme().escudoUrl" (error)="onImageError($event)" alt="Escudo del Instituto Yavirac">
+          </span>
+          <div>
+            <p class="venp-section-kicker text-orange-300">Portal electoral</p>
+            <p class="mt-1 max-w-sm text-lg font-black">{{ theme().nombreInstitucion }}</p>
+          </div>
+        </a>
+        <p class="mt-4 max-w-md text-sm leading-relaxed text-slate-400">
+          Información, participación y resultados del proceso electoral institucional en un solo espacio.
+        </p>
+      </div>
+
+      <div>
+        <p class="venp-section-kicker text-orange-300">Accesos rápidos</p>
+        <nav class="mt-4 grid gap-2 text-sm font-semibold text-slate-300">
+          <a routerLink="/actividades" class="transition hover:text-white">Cronograma electoral</a>
+          <a routerLink="/candidatos" class="transition hover:text-white">Candidatos</a>
+          <a routerLink="/resultados" class="transition hover:text-white">Resultados</a>
+        </nav>
+      </div>
+
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div class="flex items-center gap-3">
+          <mat-icon class="text-orange-300" [svgIcon]="'lucide:shield-check'"></mat-icon>
+          <p class="font-black">Votación responsable</p>
+        </div>
+        <p class="mt-3 text-sm leading-relaxed text-slate-400">
+          Protege tus credenciales y realiza el proceso únicamente desde este portal institucional.
+        </p>
+      </div>
+    </div>
+
+    <div class="mx-auto mt-8 max-w-screen-xl border-t border-white/10 pt-6 text-center text-xs text-slate-500">
+      © {{ currentYear }} {{ theme().nombreInstitucion }}. Todos los derechos reservados.
+    </div>
+  </footer>
+</div>

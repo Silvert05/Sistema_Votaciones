@@ -1,0 +1,319 @@
+<div class="venp-user-canvas flex min-h-full w-full flex-col">
+    @if (loading || working) {
+        <mat-progress-bar
+            class="!absolute left-0 right-0 top-0 z-50"
+            [mode]="'indeterminate'"
+        />
+    }
+
+    <!-- Cabecera de la eleccion -->
+    @if (eleccion && fase !== 'seleccion') {
+        <div class="venp-gradient text-white shadow-md">
+            <div class="mx-auto flex max-w-screen-xl flex-col items-center gap-5 px-6 py-8 text-center sm:flex-row sm:text-left">
+                @if (eleccion.configuracion?.escudoUrl) {
+                    <img
+                        [src]="eleccion.configuracion?.escudoUrl"
+                        alt="escudo"
+                        class="h-20 w-20 shrink-0 rounded-2xl bg-white/95 object-contain p-2 shadow-xl"
+                    />
+                }
+                <div class="flex-auto">
+                    <h1 class="text-2xl font-black leading-tight sm:text-3xl">
+                        {{ eleccion.nombre }}
+                    </h1>
+                    @if (eleccion.configuracion?.nombreInstitucion) {
+                        <p class="text-sm text-white/85">
+                            {{ eleccion.configuracion?.nombreInstitucion }}
+                        </p>
+                    }
+                    <p class="mt-0.5 text-[11px] uppercase tracking-widest text-white/60">
+                        Voto Electrónico No Presencial (VENP)
+                    </p>
+                </div>
+                @if (countdown && fase !== 'listo') {
+                    <div class="shrink-0 rounded-2xl border border-white/20 bg-white/15 px-6 py-3 text-center shadow-lg backdrop-blur">
+                        <div class="text-[10px] uppercase tracking-wide text-white/70">
+                            Finaliza en
+                        </div>
+                        <div class="text-2xl font-bold tabular-nums">
+                            {{ countdown }}
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Contenedor principal centrado -->
+    <div class="mx-auto flex w-full max-w-screen-xl flex-auto flex-col justify-center px-4 py-10 sm:px-6 sm:py-14">
+        
+        <!-- Seleccion de eleccion -->
+        @if (fase === 'seleccion') {
+            <div class="w-full">
+                <div class="mb-10 text-center">
+                    <div class="venp-bg-primary mx-auto flex h-16 w-16 items-center justify-center rounded-3xl text-white shadow-xl">
+                        <mat-icon class="icon-size-9" [svgIcon]="'lucide:fingerprint'" />
+                    </div>
+                    <h1 class="mt-5 text-3xl font-black tracking-tight text-slate-900 sm:text-5xl dark:text-white">
+                        Módulo de Votación
+                    </h1>
+                    <p class="text-secondary mx-auto mt-3 max-w-xl text-base">
+                        Selecciona el proceso electoral en el que deseas votar
+                    </p>
+                </div>
+                @if (!elecciones.length && !loading) {
+                    <div class="text-secondary venp-premium-card mx-auto max-w-lg p-10 text-center">
+                        <mat-icon
+                            class="text-secondary mx-auto mb-3 icon-size-12"
+                            [svgIcon]="'lucide:inbox'"
+                        />
+                        <p class="font-medium">
+                            No hay votaciones abiertas en este momento.
+                        </p>
+                    </div>
+                }
+                <div class="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2">
+                    @for (e of elecciones; track e.id) {
+                        <button
+                            type="button"
+                            class="group venp-premium-card relative overflow-hidden p-7 text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                            (click)="elegir(e)"
+                        >
+                            <span class="venp-brand-rule absolute inset-x-0 top-0"></span>
+                            <div class="flex items-start gap-5">
+                                @if (e.configuracion?.escudoUrl) {
+                                    <img
+                                        [src]="e.configuracion?.escudoUrl"
+                                        alt="escudo"
+                                        class="h-16 w-16 shrink-0 rounded-2xl bg-white object-contain p-1.5 shadow"
+                                    />
+                                }
+                                <div class="flex-auto">
+                                    <div class="text-xl font-black leading-tight">
+                                        {{ e.nombre }}
+                                    </div>
+                                    <div class="text-secondary mt-1 text-sm">
+                                        {{ e.configuracion?.nombreInstitucion }}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="venp-text-primary mt-6 inline-flex items-center gap-2 font-bold transition-all group-hover:gap-3">
+                                <mat-icon [svgIcon]="'lucide:fingerprint'" />
+                                Ingresar a votar
+                                <mat-icon class="icon-size-5" [svgIcon]="'lucide:arrow-right'" />
+                            </div>
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Login del votante -->
+        @if (fase === 'login') {
+            <div class="mx-auto w-full max-w-xl">
+                <div class="mb-6 text-center">
+                    <div class="venp-bg-primary mx-auto flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg">
+                        <mat-icon class="icon-size-7" [svgIcon]="'lucide:shield-check'" />
+                    </div>
+                    <h2 class="mt-5 text-2xl font-black text-gray-800 sm:text-3xl dark:text-gray-100">
+                        Bienvenido al Módulo de Votación
+                    </h2>
+                    <p class="text-secondary mt-2">
+                        Utilice su número de cédula y contraseña para ingresar a votar
+                    </p>
+                </div>
+                <div class="venp-premium-card relative overflow-hidden p-6 sm:p-9">
+                    <span class="venp-brand-rule absolute inset-x-0 top-0"></span>
+                    <h3 class="mb-6 text-lg font-black">
+                        Ingrese sus credenciales
+                    </h3>
+                    <div class="flex flex-col gap-5">
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium">Número de cédula (DNI)</label>
+                            <div class="relative">
+                                <mat-icon class="text-secondary pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 icon-size-5" [svgIcon]="'lucide:id-card'" />
+                                <input class="w-full rounded-xl border border-gray-300 bg-white py-3.5 pl-10 pr-3 outline-none transition focus:border-blue-700 focus:ring-4 focus:ring-blue-700/10 dark:border-gray-700 dark:bg-slate-900" type="text" [formControl]="identificacionCtrl" placeholder="0102030405" />
+                            </div>
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium">Contraseña</label>
+                            <div class="relative">
+                                <mat-icon class="text-secondary pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 icon-size-5" [svgIcon]="'lucide:lock'" />
+                                <input class="w-full rounded-xl border border-gray-300 bg-white py-3.5 pl-10 pr-11 outline-none transition focus:border-blue-700 focus:ring-4 focus:ring-blue-700/10 dark:border-gray-700 dark:bg-slate-900" [type]="verPassword ? 'text' : 'password'" [formControl]="passwordCtrl" placeholder="••••••••" (keyup.enter)="ingresar()" />
+                                <button type="button" class="text-secondary absolute right-3 top-1/2 -translate-y-1/2" (click)="verPassword = !verPassword">
+                                    <mat-icon class="icon-size-5" [svgIcon]="verPassword ? 'lucide:eye-off' : 'lucide:eye'" />
+                                </button>
+                            </div>
+                        </div>
+                        <button class="venp-bg-primary inline-flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-base font-bold text-white transition hover:opacity-90 active:scale-[0.99] disabled:opacity-60" [disabled]="working" (click)="ingresar()">
+                            <span>INGRESAR</span>
+                            <mat-icon [svgIcon]="'lucide:arrow-right'" />
+                        </button>
+                    </div>
+                    <div class="mt-5 text-center">
+                        <a [routerLink]="'/instructivo'" class="venp-text-primary inline-flex items-center gap-1 text-sm font-bold hover:underline">
+                            <mat-icon class="icon-size-4" [svgIcon]="'lucide:help-circle'" />
+                            ¿Cómo votar? Ver instructivo
+                        </a>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Cedula de votacion -->
+        @if (fase === 'cedula' && cedulaActual) {
+            <div class="mx-auto w-full max-w-5xl">
+                <div class="mb-4 flex items-center justify-between">
+                    <div class="text-secondary flex items-center gap-2 text-sm">
+                        <mat-icon class="icon-size-5" [svgIcon]="'lucide:file-text'" />
+                        Cédula {{ cedulaIndex + 1 }} de {{ totalCedulas }}
+                    </div>
+                    <div class="rounded-full bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-700">
+                        {{ cedulaActual.cantidadGanadores }} a elegir
+                    </div>
+                </div>
+
+                <!-- Progreso -->
+                <div class="mb-6 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                    <div class="venp-bg-primary h-full transition-all duration-300" [style.width.%]="((cedulaIndex + 1) / totalCedulas) * 100"></div>
+                </div>
+
+                <div class="venp-premium-card relative overflow-hidden p-6 sm:p-9">
+                    <span class="venp-brand-rule absolute inset-x-0 top-0"></span>
+                    <h2 class="text-center text-2xl font-black sm:text-3xl">
+                        {{ cedulaActual.nombre }}
+                    </h2>
+                    <p class="text-secondary mt-1 text-center">
+                        Marque su preferencia. Si no marca ninguna, se tomará como <strong>"Voto en Blanco"</strong>.
+                    </p>
+
+                    <div class="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        @for (c of cedulaActual.candidaturas; track c.id) {
+                            <label
+                                class="venp-choice-card flex cursor-pointer items-center gap-4 rounded-2xl border-2 p-4 transition-all sm:p-5"
+                                [style.borderColor]="seleccion(cedulaActual.id) === 'CANDIDATO:' + c.id ? 'var(--venp-primary)' : 'transparent'"
+                                [class.bg-blue-50]="seleccion(cedulaActual.id) === 'CANDIDATO:' + c.id"
+                            >
+                                <input type="radio" class="h-5 w-5 accent-[#1d4ed8]" [checked]="seleccion(cedulaActual.id) === 'CANDIDATO:' + c.id" (change)="marcar(cedulaActual.id, 'CANDIDATO:' + c.id)" />
+                                <img [src]="c.elector.fotoUrl || '/img/avatar-placeholder.svg'" alt="foto" class="h-14 w-14 rounded-full object-cover ring-2 ring-gray-100 dark:ring-gray-700" />
+                                <div class="min-w-0 flex-auto">
+                                    <div class="text-base font-bold">
+                                        {{ c.elector.apellidos }} {{ c.elector.nombres }}
+                                    </div>
+                                    @if (c.lista) {
+                                        <div class="text-secondary mt-0.5 flex items-center gap-1.5 text-xs">
+                                            <span class="inline-block h-3 w-3 rounded-full" [style.background]="c.lista.color || '#999'"></span>
+                                            Lista {{ c.lista.codigo }} · {{ c.lista.nombre }}
+                                        </div>
+                                    }
+                                </div>
+                            </label>
+                        }
+
+                        <div class="mt-2 grid grid-cols-1 gap-3 md:col-span-2 sm:grid-cols-2">
+                            <label
+                                class="flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition hover:bg-gray-50 dark:hover:bg-gray-800"
+                                [style.borderColor]="seleccion(cedulaActual.id) === 'BLANCO' ? 'var(--venp-primary)' : 'transparent'"
+                                [class.bg-blue-50]="seleccion(cedulaActual.id) === 'BLANCO'"
+                            >
+                                <input type="radio" class="h-5 w-5 accent-[#1d4ed8]" [checked]="seleccion(cedulaActual.id) === 'BLANCO'" (change)="marcar(cedulaActual.id, 'BLANCO')" />
+                                <span class="font-medium">Voto en blanco</span>
+                            </label>
+                            <label
+                                class="flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition hover:bg-gray-50 dark:hover:bg-gray-800"
+                                [style.borderColor]="seleccion(cedulaActual.id) === 'NULO' ? 'var(--venp-primary)' : 'transparent'"
+                                [class.bg-blue-50]="seleccion(cedulaActual.id) === 'NULO'"
+                            >
+                                <input type="radio" class="h-5 w-5 accent-[#1d4ed8]" [checked]="seleccion(cedulaActual.id) === 'NULO'" (change)="marcar(cedulaActual.id, 'NULO')" />
+                                <span class="font-medium">Voto nulo</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mt-8 flex justify-between">
+                        <button type="button" [disabled]="cedulaIndex === 0" (click)="anterior()" class="inline-flex items-center gap-1 rounded-xl border px-5 py-2.5 font-medium hover:bg-gray-50 disabled:opacity-40 dark:hover:bg-gray-800">
+                            <mat-icon [svgIcon]="'lucide:arrow-left'" /><span>Anterior</span>
+                        </button>
+                        <button type="button" (click)="siguiente()" class="venp-bg-primary inline-flex items-center gap-1 rounded-xl px-6 py-2.5 font-semibold text-white transition hover:opacity-90 active:scale-[0.99]">
+                            <span>{{ cedulaIndex === totalCedulas - 1 ? 'Revisar voto' : 'Siguiente' }}</span>
+                            <mat-icon [svgIcon]="'lucide:arrow-right'" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Confirmacion -->
+        @if (fase === 'confirmar') {
+            <div class="mx-auto w-full max-w-3xl">
+                <div class="mb-6 text-center">
+                    <h2 class="text-2xl font-bold sm:text-3xl">Confirme su voto</h2>
+                    <p class="text-secondary mt-1">
+                        Revise sus selecciones antes de emitir. Esta acción no se puede deshacer.
+                    </p>
+                </div>
+                <div class="venp-premium-card relative overflow-hidden">
+                    <span class="venp-brand-rule absolute inset-x-0 top-0"></span>
+                    <div class="divide-y">
+                        @for (r of resumen(); track r.dignidad) {
+                            <div class="flex items-center justify-between gap-4 p-4">
+                                <span class="text-secondary text-sm">{{ r.dignidad }}</span>
+                                <span class="text-right font-semibold">{{ r.opcion }}</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="mt-6 flex flex-col justify-between gap-3 sm:flex-row">
+                    <button type="button" (click)="fase = 'cedula'; cedulaIndex = 0" class="inline-flex items-center justify-center gap-1 rounded-xl border px-5 py-3 font-medium hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <mat-icon [svgIcon]="'lucide:arrow-left'" /><span>Volver a revisar</span>
+                    </button>
+                    <button type="button" [disabled]="working" (click)="confirmar()" class="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-8 py-3 font-bold text-white transition hover:bg-green-700 active:scale-[0.99] disabled:opacity-60">
+                        <mat-icon [svgIcon]="'lucide:check-circle'" /><span>Emitir mi voto</span>
+                    </button>
+                </div>
+            </div>
+        }
+
+        <!-- Listo / Mensaje de confirmacion -->
+        @if (fase === 'listo') {
+            <div class="mx-auto w-full max-w-2xl">
+                <div class="venp-premium-card relative overflow-hidden p-8 sm:p-10">
+                    <span class="venp-brand-rule absolute inset-x-0 top-0"></span>
+                    <div class="flex flex-col items-center gap-5 text-center sm:flex-row sm:items-start sm:text-left">
+                        <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 shadow-lg">
+                            <mat-icon class="text-white icon-size-10" [svgIcon]="'lucide:check'" />
+                        </div>
+                        <div class="flex-auto pt-1">
+                            <div class="text-xl font-black text-gray-800 dark:text-gray-100">
+                                Estimado(a) Elector(a):
+                            </div>
+                            <p class="text-secondary mt-1">
+                                Le informamos que su participación ha sido registrada satisfactoriamente. Su voto es secreto y ya fue contabilizado.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex flex-col items-center gap-4">
+                    @if (comprobante) {
+                        <button type="button" (click)="descargarComprobante()" class="venp-bg-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 font-semibold text-white">
+                            <mat-icon [svgIcon]="'lucide:download'" />
+                            Descargar nuevamente mi certificado
+                        </button>
+                    }
+                    <div class="text-secondary flex items-center gap-3">
+                        <svg class="h-5 w-5 animate-spin text-[#1d4ed8]" viewBox="0 0 24 24" fill="none">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <span class="text-sm">Volviendo al inicio de sesión en <strong>{{ redirectSegundos }}s</strong>…</span>
+                    </div>
+                    <button type="button" (click)="volverALogin()" class="inline-flex items-center gap-2 rounded-xl border px-6 py-2.5 font-medium hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <mat-icon [svgIcon]="'lucide:log-out'" />
+                        Finalizar ahora
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
